@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import tensorflow.keras as keras
 from solver import Board, Search
-import sys
 
 model = keras.models.load_model("./model/best.h5")
 board = Board([])
@@ -110,9 +109,7 @@ def get_filled_cells(cells):
     """
     each cell must be 50x50 pixels
     """
-    # result = [False] * 81
     result = []
-    values = []
 
     for cell in cells:
         cell = cv2.threshold(cell, 128, 255, cv2.THRESH_BINARY_INV)[1]
@@ -121,12 +118,6 @@ def get_filled_cells(cells):
             result.append(True)
         else:
             result.append(False)
-        # values.append(num_white_px)
-
-    # m = max(values) // 4
-    # for i, value in enumerate(values):
-    #     if value > m:
-    #         result[i] = True
 
     return result
 
@@ -153,7 +144,6 @@ def get_cell_values(cells, filled_cells):
         if probablity < 0.8:
             print(f"cell {i}")
             print(probablity)
-            # cv2.imshow(f"{i} guess:{np.argmax(predictions)}", original)
 
         result.append(np.argmax(predictions))
 
@@ -161,6 +151,7 @@ def get_cell_values(cells, filled_cells):
 
 
 solutions = {}
+
 
 def blend_non_transparent(background_img, overlay_img):
     """
@@ -217,7 +208,7 @@ def main(img):
         board.squares = values
 
         if not board.is_valid():
-            return img
+            return
 
         key = board.get_key()
         solution = solutions.get(key)
@@ -225,7 +216,7 @@ def main(img):
         if solution == None:
             succes = search.search_board(0)
             if not succes or not board.is_valid(False):
-                return img
+                return
             solutions[key] = board.squares
         else:
             board.squares = solutions.get(board.key)
@@ -254,13 +245,8 @@ def main(img):
 
         result = blend_non_transparent(img, img_warp)
         cv2.imshow("solution", result)
-        return result
-    else:
-        return img
 
 
-
-# img = cv2.imread("./test_data/sudokus/sudoku_3.jpg")
 fps = 0
 total_frames = 0
 fps_wait = time.time()

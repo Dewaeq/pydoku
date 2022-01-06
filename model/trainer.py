@@ -100,7 +100,6 @@ def build_model():
 
     return model
 
-# tf.debugging.set_log_device_placement(True)
 
 x_data, y_data = read_data_files()
 print("Data size: ", len(x_data))
@@ -126,4 +125,4 @@ score = model.evaluate(x_test, y_test, verbose=0)
 print('Test Score: ', score[0])
 print('Test Accuracy: ', score[1])
 
-model.save("best.h5")
+model.save("model.h5")
