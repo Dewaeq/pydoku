@@ -1,9 +1,9 @@
 import cv2
 import numpy as np
-import tensorflow.keras as keras
+from tensorflow import keras
 from solver import Board, Search
 
-model = keras.models.load_model("./model/best.h5")
+model = keras.models.load_model("./model.h5")
 board = Board([])
 search = Search(board)
 
@@ -244,15 +244,3 @@ def process(img):
         result = blend_non_transparent(img, img_warp)
 
         return result
-
-
-if __name__ == "__main__":
-    img = cv2.imread("./test_data/sudokus/sudoku_2.jpeg")
-    while True:
-        result = process(img)
-
-        if result is not None:
-            cv2.imshow("solution", result)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
