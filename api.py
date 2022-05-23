@@ -17,7 +17,7 @@ def main():
 
 
 @app.post("/solve")
-async def solve(file: UploadFile = File(...)):
+def solve(file: UploadFile = File(...)):
     img = Image.open(file.file)
     cv2_img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
     result = process(cv2_img)
@@ -29,5 +29,3 @@ async def solve(file: UploadFile = File(...)):
 
     return StreamingResponse(BytesIO(png_result.tobytes()), media_type="image/png")
 
-if __name__ == "__main__":
-    uvicorn.run(app)
