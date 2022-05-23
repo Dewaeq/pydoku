@@ -138,11 +138,6 @@ def get_cell_values(cells, filled_cells):
 
         # ~10x faster than model.predict
         predictions = model(cell, training=False)
-        probablity = np.amax(predictions)
-
-        if probablity < 0.8:
-            print(f"cell {i}")
-            print(probablity)
 
         result.append(np.argmax(predictions))
 
