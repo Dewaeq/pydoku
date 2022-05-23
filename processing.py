@@ -1,4 +1,3 @@
-import time
 import cv2
 import numpy as np
 import tensorflow.keras as keras
@@ -186,7 +185,7 @@ def blend_non_transparent(background_img, overlay_img):
     return np.uint8(cv2.addWeighted(face_part, 255.0, overlay_part, 255.0, 0.0))
 
 
-def main(img):
+def process(img):
     thresh = preprocess(img)
     contour, corners = get_contours(thresh)
     if contour is not None:
@@ -195,7 +194,6 @@ def main(img):
 
         for crn in corners:
             cv2.circle(cnt_img, crn, 15, (189, 70, 189), -1)
-        cv2.imshow("board", cnt_img)
 
         board_img = get_board(img, corners)
         board_gray = cv2.cvtColor(board_img, cv2.COLOR_BGR2GRAY)
@@ -208,7 +206,7 @@ def main(img):
         board.squares = values
 
         if not board.is_valid():
-            return
+            return None
 
         key = board.get_key()
         solution = solutions.get(key)
@@ -216,7 +214,7 @@ def main(img):
         if solution == None:
             succes = search.search_board(0)
             if not succes or not board.is_valid(False):
-                return
+                return None
             solutions[key] = board.squares
         else:
             board.squares = solutions.get(board.key)
@@ -244,38 +242,17 @@ def main(img):
         img_warp = cv2.warpPerspective(digits_img, matrix, (width, height))
 
         result = blend_non_transparent(img, img_warp)
-        cv2.imshow("solution", result)
+
+        return result
 
 
-fps = 0
-total_frames = 0
-fps_wait = time.time()
-cap = cv2.VideoCapture(0)
+if __name__ == "__main__":
+    img = cv2.imread("./test_data/sudokus/sudoku_2.jpeg")
+    while True:
+        result = process(img)
 
-while True:
-    succes, img = cap.read()
+        if result is not None:
+            cv2.imshow("solution", result)
 
-    main(img)
-    cv2.putText(img,
-                "{:.0f} fps".format(fps),
-                (15, 40),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (100, 255, 0),
-                1,
-                cv2.LINE_AA)
-
-    cv2.imshow("input", img)
-
-    total_frames += 1
-
-    cur_time = time.time()
-    time_diff = cur_time - fps_wait
-
-    if time_diff > 0.5:
-        fps = total_frames / (time_diff)
-        total_frames = 0
-        fps_wait = cur_time
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
