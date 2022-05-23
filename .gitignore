@@ -1,4 +1,5 @@
 train_data/
+test_data/
 model/*.h5
 
 # Byte-compiled / optimized / DLL files
