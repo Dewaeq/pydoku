@@ -6,9 +6,10 @@ from solver import Board, Search
 model = keras.models.load_model("./model.h5")
 board = Board([])
 search = Search(board)
+solutions: dict[int, list[int]] = {}
 
 
-def preprocess(img):
+def preprocess(img: cv2.Mat) -> cv2.Mat:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 3)
     thresh = cv2.adaptiveThreshold(
@@ -16,7 +17,7 @@ def preprocess(img):
     return thresh
 
 
-def get_contours(img):
+def get_contours(img: cv2.Mat):
     """
     returns a tuple containing the contour, its area and its corners
     """
@@ -46,7 +47,7 @@ def get_contours(img):
     return result
 
 
-def sort_corners(corners):
+def sort_corners(corners: list) -> list[tuple]:
     """
     order is upper-left, upper-right, lower-left, lower-right
     """
@@ -66,7 +67,7 @@ def sort_corners(corners):
     return [left_crns[0], right_crns[0], left_crns[1], right_crns[1]]
 
 
-def get_board(img, corners):
+def get_board(img: cv2.Mat, corners: list) -> cv2.Mat:
     """
     returns the board between given corners in grayscale.
     board is 450x450 pixels
@@ -79,7 +80,7 @@ def get_board(img, corners):
     return img_warp
 
 
-def split_cells(img):
+def split_cells(img: cv2.Mat) -> list:
     cells = []
     rows = np.vsplit(img, 9)
     for row in rows:
@@ -90,7 +91,7 @@ def split_cells(img):
     return cells
 
 
-def crop_cells(cells):
+def crop_cells(cells: list) -> list:
     """
     this function expects that each cell is 50x50 pixels
     """
@@ -98,22 +99,23 @@ def crop_cells(cells):
 
     for cell in cells:
         cell = np.asarray(cell)
-        cell = cell[6:46, 10:46]
+        cell = cell[5:45, 4:45]
         cropped_cells.append(cell)
 
     return cropped_cells
 
 
-def get_filled_cells(cells):
+def get_filled_cells(cells: list) -> list[bool]:
     """
     each cell must be 50x50 pixels
     """
     result = []
 
     for cell in cells:
-        cell = cv2.threshold(cell, 128, 255, cv2.THRESH_BINARY_INV)[1]
-        num_white_px = np.count_nonzero(cell[15:35, 15:35])
-        if num_white_px > 0:
+        thresh = cv2.threshold(cell, 128, 255, cv2.THRESH_BINARY_INV)[1]
+        num_white_px = np.count_nonzero(thresh[17:33, 17:33])
+
+        if num_white_px > 5:
             result.append(True)
         else:
             result.append(False)
@@ -121,7 +123,7 @@ def get_filled_cells(cells):
     return result
 
 
-def get_cell_values(cells, filled_cells):
+def get_cell_values(cells: list, filled_cells: list[bool]) -> list[int]:
     result = []
 
     for i, cell in enumerate(cells):
@@ -142,9 +144,6 @@ def get_cell_values(cells, filled_cells):
         result.append(np.argmax(predictions))
 
     return result
-
-
-solutions = {}
 
 
 def blend_non_transparent(background_img, overlay_img):
@@ -180,62 +179,79 @@ def blend_non_transparent(background_img, overlay_img):
     return np.uint8(cv2.addWeighted(face_part, 255.0, overlay_part, 255.0, 0.0))
 
 
-def process(img):
+def overlay_cells(img: cv2.Mat, corners: list, values: list[int]) -> cv2.Mat:
+    digits_img = np.zeros((450, 450, 3), np.uint8)
+    for i, value in enumerate(values):
+        if value is None:
+            continue
+
+        x = (i % 9) * 50
+        y = (i // 9) * 50
+
+        cv2.putText(digits_img, str(value),
+                    (x + 15, y + 35),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 255, 0),
+                    3)
+
+    height, width = img.shape[:2]
+    pst1 = np.float32(
+        [[0, 0], [450, 0], [0, 450], [450, 450]])
+    pst2 = np.float32(corners)
+
+    matrix = cv2.getPerspectiveTransform(pst1, pst2)
+    img_warp = cv2.warpPerspective(digits_img, matrix, (width, height))
+
+    result = blend_non_transparent(img, img_warp)
+
+    return result
+
+
+def process(img: cv2.Mat) -> tuple[bool, cv2.Mat]:
     thresh = preprocess(img)
     contour, corners = get_contours(thresh)
-    if contour is not None:
-        corners = sort_corners(corners)
-        cnt_img = img.copy()
 
-        for crn in corners:
-            cv2.circle(cnt_img, crn, 15, (189, 70, 189), -1)
+    if contour is None:
+        return (False, None)
 
-        board_img = get_board(img, corners)
-        board_gray = cv2.cvtColor(board_img, cv2.COLOR_BGR2GRAY)
+    corners = sort_corners(corners)
+    cnt_img = img.copy()
 
-        cells = split_cells(board_gray)
-        cells = crop_cells(cells)
-        filled_cells = get_filled_cells(cells)
-        values = get_cell_values(cells, filled_cells)
+    for crn in corners:
+        cv2.circle(cnt_img, crn, 15, (189, 70, 189), -1)
 
-        board.squares = values
+    board_img = get_board(img, corners)
+    board_gray = cv2.cvtColor(board_img, cv2.COLOR_BGR2GRAY)
 
-        if not board.is_valid():
-            return None
+    cells = split_cells(board_gray)
+    cells = crop_cells(cells)
+    filled_cells = get_filled_cells(cells)
+    values = get_cell_values(cells, filled_cells)
 
-        key = board.get_key()
-        solution = solutions.get(key)
+    board.squares = values
 
-        if solution == None:
-            succes = search.search_board(0)
-            if not succes or not board.is_valid(False):
-                return None
-            solutions[key] = board.squares
-        else:
-            board.squares = solutions.get(board.key)
+    input_cells = map(
+        lambda x: x[1] if filled_cells[x[0]] else None, enumerate(board.squares))
+    input_img = overlay_cells(cnt_img, corners, input_cells)
 
-        digits_img = np.zeros((450, 450, 3), np.uint8)
-        for i, value in enumerate(board.squares):
-            if filled_cells[i]:
-                continue
-            x = (i % 9) * 50
-            y = (i // 9) * 50
+    if not board.is_valid():
+        return (False, input_img)
 
-            cv2.putText(digits_img, str(value),
-                        (x + 15, y + 35),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1,
-                        (0, 255, 0),
-                        3)
+    key = board.get_key()
+    solution = solutions.get(key)
 
-        height, width = img.shape[:2]
-        pst1 = np.float32(
-            [[0, 0], [450, 0], [0, 450], [450, 450]])
-        pst2 = np.float32(corners)
+    if solution == None:
+        succes = search.search_board(0)
+        if not succes or not board.is_valid(False):
+            return (False, input_img)
 
-        matrix = cv2.getPerspectiveTransform(pst1, pst2)
-        img_warp = cv2.warpPerspective(digits_img, matrix, (width, height))
+        solutions[key] = board.squares
+    else:
+        board.squares = solutions.get(board.key)
 
-        result = blend_non_transparent(img, img_warp)
+    solution_cells = map(
+        lambda x: x[1] if not filled_cells[x[0]] else None, enumerate(board.squares))
+    solution_img = overlay_cells(img, corners, solution_cells)
 
-        return result
+    return (True, solution_img)

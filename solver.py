@@ -3,6 +3,9 @@ import random
 
 
 class Board:
+    key: int
+    squares: List[int]
+
     def __init__(self, squares: List[int]) -> None:
         self.key = 0
         self.squares = squares

@@ -1,9 +1,8 @@
 import cv2
 import numpy as np
-import uvicorn
-from fastapi import File, FastAPI, UploadFile
+import base64
+from fastapi import File, FastAPI
 from fastapi.responses import StreamingResponse, HTMLResponse
-from PIL import Image
 from io import BytesIO
 
 from processing import process
@@ -17,25 +16,32 @@ def main():
 
 
 @app.post("/solve")
-def solve(file: UploadFile = File(...)):
-    img = Image.open(file.file)
+def solve(file: bytes = File(...)):
+    image_stream = BytesIO(file)
+    image_stream.seek(0)
+    file_bytes = np.asarray(bytearray(image_stream.read()), dtype=np.uint8)
+    frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    height, width = frame.shape[:2]
+
     max_size = 1000
 
-    if img.width > max_size:
-        s = img.width / max_size
-        img = img.resize((int(img.width / s), int(img.height / s)))
-    elif img.height > max_size:
-        s = img.height / max_size
-        img = img.resize((int(img.width / s), int(img.height / s)))
+    if width > max_size:
+        s = width / max_size
+        frame = cv2.resize(frame, (int(width / s), int(height / s)))
+    elif height > max_size:
+        s = height / max_size
+        frame = cv2.resize(frame, (int(width / s), int(height / s)))
 
-    cv2_img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    result = process(cv2_img)
-
+    (succes, result) = process(frame)
 
     if result is None:
-        return HTMLResponse(content="<h3>Failed to read sudoku</h3>")
+        return HTMLResponse(content='<h3>Failed to read sudoku</h3>')
 
     _, png_result = cv2.imencode(".png", result)
+    base64_str = base64.b64encode(png_result.tobytes()).decode('utf-8')
+
+    if not succes:
+        return HTMLResponse(content=f'<h3>Failed to read board, this is what I see:</h3><img src="data:image/png;base64,{base64_str}">')
 
     return StreamingResponse(BytesIO(png_result.tobytes()), media_type="image/png")
 
