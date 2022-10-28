@@ -4,8 +4,7 @@ import base64
 from fastapi import File, FastAPI
 from fastapi.responses import StreamingResponse, HTMLResponse
 from io import BytesIO
-
-from processing import process
+import processing
 
 app = FastAPI()
 
@@ -32,15 +31,15 @@ def solve(file: bytes = File(...)):
         s = height / max_size
         frame = cv2.resize(frame, (int(width / s), int(height / s)))
 
-    (succes, result) = process(frame)
+    result = processing.process(frame)
 
-    if result is None:
+    if result.output_image is None:
         return HTMLResponse(content='<h3>Failed to read sudoku</h3>')
 
-    _, png_result = cv2.imencode(".png", result)
+    _, png_result = cv2.imencode(".png", result.output_image)
     base64_str = base64.b64encode(png_result.tobytes()).decode('utf-8')
 
-    if not succes:
+    if not result.succes:
         return HTMLResponse(content=f'<h3>Failed to read board, this is what I see:</h3><img src="data:image/png;base64,{base64_str}">')
 
     return StreamingResponse(BytesIO(png_result.tobytes()), media_type="image/png")

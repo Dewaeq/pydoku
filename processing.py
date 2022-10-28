@@ -3,6 +3,14 @@ import numpy as np
 from tensorflow import keras
 from solver import Board, Search
 
+
+class ProcessResult:
+    def __init__(self, succes: bool, output_image: cv2.Mat, board: Board) -> None:
+        self.succes = succes
+        self.output_image = output_image
+        self.board = board
+
+
 model = keras.models.load_model("./model.h5")
 board = Board([])
 search = Search(board)
@@ -21,7 +29,7 @@ def get_contours(img: cv2.Mat):
     """
     returns a tuple containing the contour, its area and its corners
     """
-    cnts, hier = cv2.findContours(
+    cnts, _ = cv2.findContours(
         img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     max_area = 0
     result = (None, None)
@@ -91,15 +99,38 @@ def split_cells(img: cv2.Mat) -> list:
     return cells
 
 
-def crop_cells(cells: list) -> list:
+def extract_cell(cell: np.ndarray) -> np.ndarray:
+    img = cell.copy()
+    _, thresh1 = cv2.threshold(
+        img, 0, 255, cv2.THRESH_OTSU | cv2.THRESH_BINARY_INV)
+    rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 10))
+
+    dilation = cv2.dilate(thresh1, rect_kernel, iterations=1)
+
+    contours, _ = cv2.findContours(dilation, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+
+    if len(contours) != 0:
+        contour = contours[0]
+        x, y, w, h = cv2.boundingRect(contour)
+        cell = cell[y:y+h, x:x+w]
+
+    return cell
+
+
+def crop_cells(cells: list, filled_cells: list[bool]) -> list:
     """
     this function expects that each cell is 50x50 pixels
     """
     cropped_cells = []
 
-    for cell in cells:
+    for i, cell in enumerate(cells):
         cell = np.asarray(cell)
-        cell = cell[5:45, 4:45]
+        cell = cell[5:45, 5:45]
+
+        if filled_cells[i]:
+            cell = extract_cell(cell)
+
         cropped_cells.append(cell)
 
     return cropped_cells
@@ -208,12 +239,12 @@ def overlay_cells(img: cv2.Mat, corners: list, values: list[int]) -> cv2.Mat:
     return result
 
 
-def process(img: cv2.Mat) -> tuple[bool, cv2.Mat]:
+def process(img: cv2.Mat) -> ProcessResult:
     thresh = preprocess(img)
     contour, corners = get_contours(thresh)
 
     if contour is None:
-        return (False, None)
+        return ProcessResult(False, None, None)
 
     corners = sort_corners(corners)
     cnt_img = img.copy()
@@ -225,8 +256,8 @@ def process(img: cv2.Mat) -> tuple[bool, cv2.Mat]:
     board_gray = cv2.cvtColor(board_img, cv2.COLOR_BGR2GRAY)
 
     cells = split_cells(board_gray)
-    cells = crop_cells(cells)
     filled_cells = get_filled_cells(cells)
+    cells = crop_cells(cells, filled_cells)
     values = get_cell_values(cells, filled_cells)
 
     board.squares = values
@@ -236,7 +267,7 @@ def process(img: cv2.Mat) -> tuple[bool, cv2.Mat]:
     input_img = overlay_cells(cnt_img, corners, input_cells)
 
     if not board.is_valid():
-        return (False, input_img)
+        return ProcessResult(False, input_img, board)
 
     key = board.get_key()
     solution = solutions.get(key)
@@ -244,7 +275,7 @@ def process(img: cv2.Mat) -> tuple[bool, cv2.Mat]:
     if solution == None:
         succes = search.search_board(0)
         if not succes or not board.is_valid(False):
-            return (False, input_img)
+            return ProcessResult(False, input_img, board)
 
         solutions[key] = board.squares
     else:
@@ -254,4 +285,4 @@ def process(img: cv2.Mat) -> tuple[bool, cv2.Mat]:
         lambda x: x[1] if not filled_cells[x[0]] else None, enumerate(board.squares))
     solution_img = overlay_cells(img, corners, solution_cells)
 
-    return (True, solution_img)
+    return ProcessResult(True, solution_img, board)
