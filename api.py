@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import base64
 from fastapi import File, FastAPI
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from io import BytesIO
 import processing
 
@@ -40,7 +40,12 @@ def solve(file: bytes = File(...)):
     base64_str = base64.b64encode(png_result.tobytes()).decode('utf-8')
 
     if not result.succes:
-        return HTMLResponse(content=f'<h3>Failed to read board, this is what I see:</h3><img src="data:image/png;base64,{base64_str}">')
+        return HTMLResponse(content=f'''
+            <h3>Failed to read board, this is what I see:</h3>
+            <img src="data:image/png;base64,{base64_str}">
+        ''')
 
-    return StreamingResponse(BytesIO(png_result.tobytes()), media_type="image/png")
-
+    return HTMLResponse(content=f'''
+        <h3>Output:</h3>
+        <img src="data:image/png;base64,{base64_str}" style="height: 100%; width: 100%; object-fit: contain">
+    ''')
