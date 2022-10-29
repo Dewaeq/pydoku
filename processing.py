@@ -113,7 +113,11 @@ def extract_cell(cell: np.ndarray) -> np.ndarray:
     if len(contours) != 0:
         contour = contours[0]
         x, y, w, h = cv2.boundingRect(contour)
-        cell = cell[y:y+h, x:x+w]
+        mid = 20
+        x_start = (mid - h // 2)
+        x_stop = mid + h // 2
+
+        cell = cell[y:y + h, x_start:x_stop]
 
     return cell
 
@@ -143,7 +147,7 @@ def get_filled_cells(cells: list) -> list[bool]:
     result = []
 
     for cell in cells:
-        thresh = cv2.threshold(cell, 128, 255, cv2.THRESH_BINARY_INV)[1]
+        thresh = cv2.threshold(cell, 100, 255, cv2.THRESH_BINARY_INV)[1]
         num_white_px = np.count_nonzero(thresh[17:33, 17:33])
 
         if num_white_px > 5:
@@ -154,12 +158,12 @@ def get_filled_cells(cells: list) -> list[bool]:
     return result
 
 
-def get_cell_values(cells: list, filled_cells: list[bool]) -> list[int]:
-    result = []
+def get_cell_values(cells: list[np.ndarray], filled_cells: list[bool]) -> tuple[list[tuple[int, int]], list[int]]:
+    result: tuple[list, list] = ([], [])
 
     for i, cell in enumerate(cells):
         if not filled_cells[i]:
-            result.append(0)
+            result[1].append(0)
             continue
         cell = cv2.GaussianBlur(cell, (3, 3), 1)
         cell = cv2.threshold(cell, 128, 255, cv2.THRESH_BINARY)[1]
@@ -170,9 +174,18 @@ def get_cell_values(cells: list, filled_cells: list[bool]) -> list[int]:
         cell = cell.reshape(1, 32, 32, 1)
 
         # ~10x faster than model.predict
-        predictions = model(cell, training=False)
+        predictions = np.asarray(model(cell, training=False)).flatten()
+        prediction = np.argmax(predictions)
+        probablity = np.amax(predictions)
+        predictions[prediction] = 0
+        second_guess = np.argmax(predictions)
 
-        result.append(np.argmax(predictions))
+        if probablity < 0.8:
+            result[0].append((i, second_guess))
+
+        if prediction == 0:
+            prediction = second_guess
+        result[1].append(prediction)
 
     return result
 
@@ -211,24 +224,24 @@ def blend_non_transparent(background_img, overlay_img):
 
 
 def overlay_cells(img: cv2.Mat, corners: list, values: list[int]) -> cv2.Mat:
-    digits_img = np.zeros((450, 450, 3), np.uint8)
+    digits_img = np.zeros((1260, 1260, 3), np.uint8)
     for i, value in enumerate(values):
         if value is None:
             continue
 
-        x = (i % 9) * 50
-        y = (i // 9) * 50
+        x = (i % 9) * 140
+        y = (i // 9) * 140
 
         cv2.putText(digits_img, str(value),
-                    (x + 15, y + 35),
+                    (x + 45, y + 105),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
+                    3,
                     (0, 255, 0),
-                    3)
+                    9, cv2.LINE_AA)
 
     height, width = img.shape[:2]
     pst1 = np.float32(
-        [[0, 0], [450, 0], [0, 450], [450, 450]])
+        [[0, 0], [1260, 0], [0, 1260], [1260, 1260]])
     pst2 = np.float32(corners)
 
     matrix = cv2.getPerspectiveTransform(pst1, pst2)
@@ -258,7 +271,7 @@ def process(img: cv2.Mat) -> ProcessResult:
     cells = split_cells(board_gray)
     filled_cells = get_filled_cells(cells)
     cells = crop_cells(cells, filled_cells)
-    values = get_cell_values(cells, filled_cells)
+    unsure, values = get_cell_values(cells, filled_cells)
 
     board.squares = values
 
@@ -275,7 +288,18 @@ def process(img: cv2.Mat) -> ProcessResult:
     if solution == None:
         succes = search.search_board(0)
         if not succes or not board.is_valid(False):
-            return ProcessResult(False, input_img, board)
+            fixed = False
+            for (index, guess) in unsure:
+                old_value = board.squares[index]
+                board.squares[index] = guess
+                if search.search_board(0):
+                    key = board.get_key()
+                    fixed = True
+                    break
+                board.squares[index] = old_value
+
+            if not fixed:
+                return ProcessResult(False, input_img, board)
 
         solutions[key] = board.squares
     else:
