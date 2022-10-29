@@ -38,14 +38,15 @@ def solve(file: bytes = File(...)):
 
     _, png_result = cv2.imencode(".png", result.output_image)
     base64_str = base64.b64encode(png_result.tobytes()).decode('utf-8')
+    html_img = f'<img src="data:image/png;base64,{base64_str}" style="height: 100%; width: 100%; object-fit: contain">'
 
     if not result.succes:
         return HTMLResponse(content=f'''
             <h3>Failed to read board, this is what I see:</h3>
-            <img src="data:image/png;base64,{base64_str}">
+            {html_img}
         ''')
 
     return HTMLResponse(content=f'''
         <h3>Output:</h3>
-        <img src="data:image/png;base64,{base64_str}" style="height: 100%; width: 100%; object-fit: contain">
+        {html_img}
     ''')
