@@ -1,4 +1,4 @@
-import os
+""" import os
 import cv2
 import numpy as np
 import tensorflow as tf
@@ -126,3 +126,4 @@ print('Test Score: ', score[0])
 print('Test Accuracy: ', score[1])
 
 model.save("model.h5")
+ """

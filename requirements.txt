@@ -1,7 +1,5 @@
-fastapi==0.78.0
-keras==2.9.0
-numpy==1.22.0
-opencv-python-headless==4.5.5.64
-python-multipart==0.0.5
-tensorflow-cpu==2.9.1
-uvicorn==0.17.6
+fastapi==0.85.1
+numpy==1.21.6
+opencv_python_headless==4.5.5.64
+tensorflow==2.10.0
+tensorflow_cpu==2.9.1
